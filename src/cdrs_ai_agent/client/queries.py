@@ -1,4 +1,4 @@
-"""日報的查詢與統計函示 (純函式，不呼叫 API)。"""
+"""日報的查詢與統計函式 (純函式，不呼叫 API)。"""
 
 from collections import Counter
 from datetime import date
