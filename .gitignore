@@ -9,5 +9,5 @@ wheels/
 # Virtual environments
 .venv
 
-scratch.py
+scratch*.py
 .env
