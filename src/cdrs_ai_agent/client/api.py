@@ -1,7 +1,8 @@
 """CDRS REST API 的 client（唯讀）。"""
 
+import logging
 import time
-from typing import Any
+from typing import Any, Self
 from urllib.parse import quote
 
 import httpx
@@ -15,6 +16,7 @@ from cdrs_ai_agent.client.errors import (
 )
 from cdrs_ai_agent.client.models import Report
 
+logger = logging.getLogger(__name__)
 # token 到期前多少秒就先重新取，避免剛好在請求途中過期
 _TOKEN_REFRESH_MARGIN_SECONDS = 300
 
@@ -24,12 +26,24 @@ class CdrsClient:
 
     def __init__(self, settings: CdrsSettings, http_client: httpx.Client | None = None) -> None:
         self._settings = settings
+        self._owns_http = http_client is None
         self._http = http_client or httpx.Client(
             base_url=settings.base_url,
             timeout=settings.timeout_seconds,
         )
         self._token: str | None = None
         self._token_expires_at = 0.0
+
+    def close(self) -> None:
+        """關閉 HTTP 連線（只關閉自己建立的 client）。"""
+        if self._owns_http:
+            self._http.close()
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.close()
 
     def get_pending_reports(self) -> list[Report]:
         """所有待簽核（Submitted、UnderReview）的日報，不分工地。"""
@@ -43,6 +57,7 @@ class CdrsClient:
     def _get_token(self) -> str:
         now = time.monotonic()
         if self._token is not None and now < self._token_expires_at:
+            logger.debug("Using cached CDRS token")
             return self._token
 
         resp = self._send(
@@ -59,11 +74,17 @@ class CdrsClient:
         body = resp.json()
         self._token = body["token"]
         self._token_expires_at = now + body["expires_in"] - _TOKEN_REFRESH_MARGIN_SECONDS
+        logger.info(
+            "Obtained CDRS token (user=%s, role=%s)",
+            self._settings.username,
+            self._settings.role,
+        )
         return self._token
 
     def _get_json(self, path: str) -> list[dict[str, Any]]:
         resp = self._authorized_get(path)
         if resp.status_code == 401:
+            logger.warning("CDRS returned 401 for a cached token; refreshing and retrying once")
             # 快取的 token 被拒絕（例如伺服器換了簽章金鑰）：清掉快取，重新登入後再試一次
             self._token = None
             resp = self._authorized_get(path)
@@ -76,7 +97,9 @@ class CdrsClient:
     def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         """發出請求；網路層的錯誤轉成 CdrsError。"""
         try:
-            return self._http.request(method, path, **kwargs)
+            resp = self._http.request(method, path, **kwargs)
+            logger.debug("%s %s -> %s", method, path, resp.status_code)
+            return resp
         except httpx.TimeoutException as e:
             raise CdrsError(f"CDRS did not respond within {self._settings.timeout_seconds}s") from e
         except httpx.TransportError as e:
