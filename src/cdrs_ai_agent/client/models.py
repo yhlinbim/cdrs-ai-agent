@@ -1,10 +1,11 @@
 """CDRS 日報的資料模型，對應 CDRS API v2 的回傳格式。"""
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Any
 from uuid import UUID
+
 
 class ReportStatus(StrEnum):
     """對應 CDRS 的 ReportStatus enum;v2 API 回傳的是字串。"""
@@ -15,15 +16,18 @@ class ReportStatus(StrEnum):
     APPROVED = "Approved"
     REJECTED = "Rejected"
 
+
 # 待簽核 = Submitted 或 UnderReview，與CDRS 的 GetPendingReviewAsync 一致
 PENDING_STATUSES = frozenset({ReportStatus.SUBMITTED, ReportStatus.UNDER_REVIEW})
+
 
 def _parse_utc(value: str) -> datetime:
     """CDRS 回傳的 UTC 時間沒有 'Z'，補上 UTC 時區。"""
     dt = datetime.fromisoformat(value)
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt
+
 
 @dataclass(frozen=True, slots=True)
 class Report:
@@ -54,5 +58,5 @@ class Report:
             weather_condition=data["weatherCondition"],
             status=ReportStatus(data["status"]),
             created_at_utc=_parse_utc(data["createdAtUtc"]),
-            rejection_reason=data.get("rejectionReaspon"),
+            rejection_reason=data.get("rejectionReason"),
         )
