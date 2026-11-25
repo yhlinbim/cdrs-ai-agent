@@ -51,7 +51,9 @@ class CdrsClient:
             json={"username": self._settings.username, "role": self._settings.role},
         )
         if resp.status_code in (400, 401, 403):
-            raise CdrsAuthError(f"Token request rejected ({resp.status_code}): {_error_message(resp)}")
+            raise CdrsAuthError(
+                f"Token request rejected ({resp.status_code}): {_error_message(resp)}"
+            )
         _raise_for_error(resp)
 
         body = resp.json()
@@ -76,9 +78,7 @@ class CdrsClient:
         try:
             return self._http.request(method, path, **kwargs)
         except httpx.TimeoutException as e:
-            raise CdrsError(
-                f"CDRS did not respond within {self._settings.timeout_seconds}s"
-            ) from e
+            raise CdrsError(f"CDRS did not respond within {self._settings.timeout_seconds}s") from e
         except httpx.TransportError as e:
             raise CdrsError(f"Cannot reach CDRS: {e}") from e
 
@@ -96,7 +96,9 @@ def _raise_for_error(resp: httpx.Response) -> None:
     if resp.is_success:
         return
     if resp.status_code in (401, 403):
-        raise CdrsAuthError(f"CDRS rejected the request ({resp.status_code}): {_error_message(resp)}")
+        raise CdrsAuthError(
+            f"CDRS rejected the request ({resp.status_code}): {_error_message(resp)}"
+        )
     if resp.status_code == 429:
         raise CdrsRateLimitedError(int(resp.headers.get("Retry-After", "60")))
     raise CdrsApiError(
