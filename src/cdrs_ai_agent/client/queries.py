@@ -32,6 +32,6 @@ def total_workers(reports: list[Report]) -> int:
     return sum(r.worker_count for r in reports)
 
 
-def latest_report(reports: list[Report]) -> Report:
-    """回傳 report_date 最新的一筆日報。"""
-    return max(reports, key=lambda r: r.report_date)
+def latest_report(reports: list[Report]) -> Report | None:
+    """回傳 report_date 最新的一筆日報；沒有日報時回傳 None。"""
+    return max(reports, key=lambda r: r.report_date, default=None)
