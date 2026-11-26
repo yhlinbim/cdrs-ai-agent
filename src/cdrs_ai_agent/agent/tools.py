@@ -17,9 +17,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "get_pending_reports",
         "description": (
-            "取得目前等待主管簽核的施工日報（狀態 Submitted 或 UnderReview）。"
+            "只取得「等待主管簽核」的施工日報（狀態 Submitted 或 UnderReview），"
+            "不包含草稿、已核准、已退回的。"
             "使用者問到待簽、待審核、拖太久沒簽的日報時使用。"
-            "可以用 older_than_days 只取日報日期距今超過 N 天的。"
+            "要查某個工地全部的日報（含已核准、已退回），請改用 get_project_reports。"
         ),
         "input_schema": {
             "type": "object",
@@ -27,7 +28,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "older_than_days": {
                     "type": "integer",
                     "minimum": 0,
-                    "description": "只回傳日報日期距今超過這個天數的日報，例如 5",
+                    "description": (
+                        "只回傳「已經待簽超過」這個天數的日報（日報日期早於今天減 N 天），"
+                        "例如 5 表示待簽超過 5 天。注意：這不是「最近 N 天」。"
+                    ),
                 },
             },
             "required": [],
