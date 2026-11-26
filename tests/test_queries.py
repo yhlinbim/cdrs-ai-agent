@@ -1,11 +1,9 @@
 """queries.py 的單元測試：只測計算邏輯，不呼叫 API。"""
 
 from datetime import date
-from uuid import uuid4
 
 import pytest
 
-from cdrs_ai_agent.client.models import Report
 from cdrs_ai_agent.client.queries import (
     count_by_status,
     filter_by_project,
@@ -13,26 +11,9 @@ from cdrs_ai_agent.client.queries import (
     pending_older_than,
     total_workers,
 )
+from tests.helpers import make_report
 
 TODAY = date(2026, 11, 26)
-
-
-def make_report(**overrides: object) -> Report:
-    """建立測試用的 Report；只要寫出這個測試在意的欄位，其他用預設值。"""
-    data: dict[str, object] = {
-        "id": str(uuid4()),
-        "projectId": "PROJ-001",
-        "siteWorkerId": "worker-a",
-        "reportDate": "2026-11-20",
-        "workDescription": "測試用日報",
-        "workerCount": 5,
-        "weatherCondition": "Sunny",
-        "status": "Submitted",
-        "createdAtUtc": "2026-11-20T08:00:00",
-        "rejectionReason": None,
-    }
-    data.update(overrides)
-    return Report.from_json(data)
 
 
 def test_filter_by_project_returns_only_matching_project() -> None:
