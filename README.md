@@ -31,11 +31,13 @@ the most, then fetch that project's full history.
 ## Architecture
 
 ```text
-agent/__main__.py      entry point: loads .env, configures logging, wires everything up
-└── ReportAgent        agent loop (agent/loop.py) ───────────── Anthropic Messages API
-    └── ToolExecutor   tools (agent/tools.py)
-        └── ReportSource (Protocol)
-            └── CdrsClient   REST client (client/api.py) ───── CDRS API on Azure
+agent/__main__.py        CLI ──── ReportAgent (agent/loop.py) ──── Anthropic Messages API
+mcp_server/__main__.py   MCP ──── MCPServer (mcp_server/server.py) ── any MCP host (Claude Desktop, ...)
+                                   │
+                         both use  ▼
+                         ToolExecutor (agent/tools.py)
+                         └── ReportSource (Protocol)
+                             └── CdrsClient (client/api.py) ──── CDRS API on Azure
 ```
 
 | Layer | Responsibility |
@@ -43,6 +45,7 @@ agent/__main__.py      entry point: loads .env, configures logging, wires everyt
 | `client/` | CDRS REST client: JWT caching (refreshed 5 minutes early), one retry on 401, typed exceptions (`CdrsAuthError`, `CdrsRateLimitedError`, `CdrsApiError`) carrying status codes and correlation IDs; an immutable `Report` model; pure query functions |
 | `agent/tools.py` | Two read-only tools. Validates input before calling CDRS, returns only the fields needed to answer, and turns empty results and errors into explicit messages (`is_error`) |
 | `agent/loop.py` | Calls Claude while `stop_reason == "tool_use"`, runs every requested tool and returns all results in one message, stops after 5 turns, and reports token usage |
+| `mcp_server/` | Exposes the same tools over MCP (Python SDK v2, stdio). Tool errors become MCP `ToolError`s; parameter schemas (for example `older_than_days >= 0`) are validated before the tool runs |
 
 ## Design decisions
 
@@ -72,6 +75,38 @@ uv run python -m cdrs_ai_agent.agent "哪些日報待簽超過 5 天？"
 The demo backend runs on the Azure App Service free tier and can take 20–60 seconds to wake up.
 Open `/health/ready` first.
 
+## Use with Claude Desktop (MCP)
+
+The same tools are available as an MCP server, so any MCP host can use them. The host's own model
+does the reasoning and keeps the conversation, so this mode needs no Anthropic API key.
+
+In Claude Desktop open **Settings → Desktop app → Extensions → Local MCP servers → Edit config**
+and add an `mcpServers` entry (keep any existing keys in the file):
+
+```json
+{
+  "mcpServers": {
+    "cdrs-reports": {
+      "command": "C:\\Users\\<you>\\.local\\bin\\uv.exe",
+      "args": [
+        "--directory", "D:\\path\\to\\cdrs-ai-agent",
+        "run", "python", "-m", "cdrs_ai_agent.mcp_server"
+      ]
+    }
+  }
+}
+```
+
+Quit Claude Desktop completely (from the system tray) and reopen it; `cdrs-reports` should show as
+running. Follow-up questions work because the host keeps the conversation:
+
+> **Which reports have been pending for more than 5 days?** → PROJ-001, 2026-11-17
+> **Has that project ever had a report rejected?** → No; it lists PROJ-001's three reports,
+> including a draft from June
+> **Approve the oldest pending report for PROJ-001.** → It explains that the tools are read-only.
+
+The server logs to stderr only, because stdout carries the MCP protocol.
+
 ## Development
 
 ```bash
@@ -80,8 +115,9 @@ uv run ruff check .
 uv run pytest
 ```
 
-The 37 tests run without network access or API keys. Claude is replaced by a scripted fake client
-and CDRS by an in-memory source implementing `ReportSource`; the project's own code runs for real.
+The 42 tests run without network access or API keys. Claude is replaced by a scripted fake client,
+CDRS by an in-memory source implementing `ReportSource`, and the MCP server is exercised through
+the SDK's in-memory `Client`; the project's own code runs for real.
 They cover JSON mapping (including a regression test for a past field-name typo), query boundaries,
 tool validation and data minimisation, and loop behaviour: message order, `tool_use_id` matching,
 several tool calls in one response, the turn limit and truncated answers.
@@ -97,6 +133,7 @@ GitHub Actions runs ruff and pytest on every push and pull request.
 
 ## Roadmap
 
-- MCP server exposing the same tools
 - `httpx.MockTransport` tests for `CdrsClient` (token caching, 401 retry, error mapping)
-- A small evaluation set of questions with known answers
+- A repeatable evaluation script for questions with known answers
+- One source of truth for tool descriptions (currently duplicated between the agent and the MCP server)
+- `list_projects` and date-range queries (need new CDRS endpoints)
